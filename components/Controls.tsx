@@ -1,6 +1,7 @@
 import React, { useCallback, useRef } from 'react';
 import { ProjectConfig, RESOLUTIONS, LayerConfig, PRESETS, CameraMode, BackgroundType, KaraokeMode, PostProcessingConfig } from '../types';
-import { Type, Palette, Monitor, Upload, FileText, Music, Sparkles, Layers, Eye, EyeOff, Film, Type as TypeIcon, BarChart3, Waves, Grid, Star, Activity, MousePointer, Sliders, LayoutTemplate, Rotate3d, Video, Move, Zap as ZapIcon, ArrowUp, ArrowDown, Disc, Image as ImageIcon, Droplets, X, ZoomIn, ZoomOut, MoveHorizontal, Shuffle, Gauge, Clapperboard, Tornado, Vibrate, Wand2, Tv, Ghost, ChevronDown, ChevronRight, FolderOpen, Link, Trash2, Info, Keyboard, Grid2X2, Grid3X3 } from 'lucide-react';
+import { Type, Palette, Monitor, Upload, FileText, Music, Sparkles, Layers, Eye, EyeOff, Film, Type as TypeIcon, BarChart3, Waves, Grid, Star, Activity, MousePointer, Sliders, LayoutTemplate, Rotate3d, Video, Move, Zap as ZapIcon, ArrowUp, ArrowDown, Disc, Image as ImageIcon, Droplets, X, ZoomIn, ZoomOut, MoveHorizontal, Shuffle, Gauge, Clapperboard, Tornado, Vibrate, Wand2, Tv, Ghost, ChevronDown, ChevronRight, FolderOpen, Link, Trash2, Info, Keyboard, Grid2X2, Grid3X3, Loader, Download, XCircle, FileVideo } from 'lucide-react';
+import { ExportProgress } from '../services/webcodecs-exporter';
 
 interface ControlsProps {
     config: ProjectConfig;
@@ -10,6 +11,13 @@ interface ControlsProps {
     mediaName: string | null;
     lyricName: string | null;
     isRecording: boolean;
+    // MP4 Export
+    isExporting: boolean;
+    exportProgress: ExportProgress | null;
+    exportDownloadUrl: string | null;
+    onExportMP4: (fps: number, bitrate: number) => void;
+    onCancelExport: () => void;
+    hasMedia: boolean;
 }
 
 interface SliderControlProps {
@@ -184,8 +192,16 @@ const Controls: React.FC<ControlsProps> = ({
     onLyricUpload,
     mediaName,
     lyricName,
-    isRecording
+    isRecording,
+    isExporting,
+    exportProgress,
+    exportDownloadUrl,
+    onExportMP4,
+    onCancelExport,
+    hasMedia,
 }) => {
+    const [exportFps, setExportFps] = React.useState(30);
+    const [exportBitrate, setExportBitrate] = React.useState(8_000_000);
     const [localFont, setLocalFont] = React.useState(config.fontFamily === 'Custom' ? '' : config.fontFamily);
     const bgImageInputRef = useRef<HTMLInputElement>(null);
 
@@ -1493,6 +1509,129 @@ const Controls: React.FC<ControlsProps> = ({
                             step={0.05}
                             onChange={(v) => handleChange('particleOpacity', v)}
                         />
+                    </div>
+                </Section>
+
+                {/* Export MP4 Section */}
+                <div className="h-px bg-linear-to-r from-transparent via-neutral-800 to-transparent" />
+
+                <Section title="Export MP4" icon={FileVideo} defaultOpen={true} badge="WebCodecs">
+                    <div className="space-y-3">
+                        {/* Export Settings */}
+                        <div className="bg-neutral-900/50 p-3 rounded-lg border border-neutral-800/60 space-y-3">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] text-neutral-500 font-medium uppercase tracking-wider">Frame Rate</label>
+                                <div className="flex gap-1.5">
+                                    {[24, 30, 60].map((fps) => (
+                                        <button
+                                            key={fps}
+                                            onClick={() => setExportFps(fps)}
+                                            disabled={isExporting}
+                                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold tracking-wider transition-all duration-200 border ${exportFps === fps
+                                                ? 'bg-green-500/10 border-green-500/60 text-green-400 shadow-[0_0_8px_rgba(34,197,94,0.15)]'
+                                                : 'bg-neutral-800/50 border-transparent text-neutral-500 hover:bg-neutral-700/50 hover:text-neutral-300'
+                                                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                                        >
+                                            {fps} FPS
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] text-neutral-500 font-medium uppercase tracking-wider">Quality</label>
+                                <div className="flex gap-1.5">
+                                    {[
+                                        { label: 'Medium', value: 4_000_000 },
+                                        { label: 'High', value: 8_000_000 },
+                                        { label: 'Ultra', value: 16_000_000 },
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            onClick={() => setExportBitrate(opt.value)}
+                                            disabled={isExporting}
+                                            className={`flex-1 py-1.5 rounded-md text-[10px] font-bold tracking-wider transition-all duration-200 border ${exportBitrate === opt.value
+                                                ? 'bg-green-500/10 border-green-500/60 text-green-400 shadow-[0_0_8px_rgba(34,197,94,0.15)]'
+                                                : 'bg-neutral-800/50 border-transparent text-neutral-500 hover:bg-neutral-700/50 hover:text-neutral-300'
+                                                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="text-[9px] text-neutral-600 flex items-center gap-1.5">
+                                <Info size={10} />
+                                <span>Resolution: {config.resolution.width}×{config.resolution.height}</span>
+                            </div>
+                        </div>
+
+                        {/* Export Button */}
+                        {!isExporting && !exportDownloadUrl && (
+                            <button
+                                onClick={() => onExportMP4(exportFps, exportBitrate)}
+                                disabled={!hasMedia || isRecording}
+                                className="w-full flex items-center justify-center gap-2 bg-linear-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 disabled:from-neutral-800 disabled:to-neutral-800 text-white disabled:text-neutral-500 py-2.5 px-4 rounded-lg text-xs font-bold transition-all duration-200 shadow-lg shadow-green-500/20 hover:shadow-green-400/30 disabled:shadow-none disabled:cursor-not-allowed"
+                            >
+                                <FileVideo size={14} />
+                                Export MP4
+                            </button>
+                        )}
+
+                        {/* Export Progress */}
+                        {isExporting && exportProgress && (
+                            <div className="space-y-2">
+                                <div className="bg-neutral-900/80 p-3 rounded-lg border border-green-500/20 space-y-2">
+                                    {/* Progress bar */}
+                                    <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-linear-to-r from-green-500 to-emerald-400 rounded-full transition-[width] duration-200"
+                                            style={{ width: `${exportProgress.percent}%` }}
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <Loader size={10} className="animate-spin text-green-400" />
+                                            <span className="text-[10px] text-green-400 font-medium">{exportProgress.percent}%</span>
+                                        </div>
+                                        <span className="text-[9px] text-neutral-500 font-mono">
+                                            {exportProgress.currentFrame}/{exportProgress.totalFrames}
+                                        </span>
+                                    </div>
+                                    <p className="text-[9px] text-neutral-500 truncate">{exportProgress.message}</p>
+                                </div>
+                                <button
+                                    onClick={onCancelExport}
+                                    className="w-full flex items-center justify-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 py-2 px-4 rounded-lg text-[11px] font-medium transition-all"
+                                >
+                                    <XCircle size={13} />
+                                    Cancel Export
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Download Ready */}
+                        {exportDownloadUrl && (
+                            <div className="space-y-2">
+                                <a
+                                    href={exportDownloadUrl}
+                                    download="lumina-export.mp4"
+                                    className="w-full flex items-center justify-center gap-2 bg-linear-to-r from-green-500 to-emerald-500 hover:from-green-400 hover:to-emerald-400 text-white py-2.5 px-4 rounded-lg text-xs font-bold transition-all duration-200 shadow-lg shadow-green-500/30"
+                                >
+                                    <Download size={14} />
+                                    Download MP4
+                                </a>
+                                <button
+                                    onClick={() => onExportMP4(exportFps, exportBitrate)}
+                                    disabled={!hasMedia || isRecording}
+                                    className="w-full flex items-center justify-center gap-1.5 bg-neutral-800/60 hover:bg-neutral-700 text-neutral-400 hover:text-white py-2 px-4 rounded-lg text-[11px] font-medium border border-neutral-700/50 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                    <FileVideo size={12} />
+                                    Re-Export
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </Section>
 

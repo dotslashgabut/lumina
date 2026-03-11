@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { Play, Pause, Download, StopCircle, Maximize, Minimize, Settings2, Square, Circle, SkipBack, SkipForward, Repeat, Repeat1, ArrowRight, ListMusic, Type, Trash2, X, Volume2, VolumeX } from 'lucide-react';
 import { DEFAULT_CONFIG, ProjectConfig, LyricLine } from './types';
 import { parseLyrics, detectFormat } from './services/parser';
+import { webCodecsExporter, ExportProgress } from './services/webcodecs-exporter';
 import Controls from './components/Controls';
 import LyricScene from './components/LyricScene';
 
@@ -22,6 +23,11 @@ const App: React.FC = () => {
     const [isDragging, setIsDragging] = useState(false);
     const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(false);
+
+    // MP4 Export state
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+    const [exportDownloadUrl, setExportDownloadUrl] = useState<string | null>(null);
 
     // Playlist and Repeat state
     const [playlist, setPlaylist] = useState<{ id: string, file: File, url: string, name: string, lyrics?: LyricLine[], lyricName?: string | null }[]>([]);
@@ -345,6 +351,62 @@ const App: React.FC = () => {
             mediaRecorderRef.current.stop();
             if (audioRef.current) audioRef.current.pause();
         }
+    }, []);
+
+    // WebCodecs MP4 Export
+    const handleExportMP4 = useCallback(async (fps: number, bitrate: number) => {
+        if (!canvasRef.current || !audioRef.current) return;
+        if (!audioContextRef.current || !sourceNodeRef.current) {
+            setupAudioContext();
+        }
+        if (audioContextRef.current?.state === 'suspended') {
+            await audioContextRef.current.resume();
+        }
+        if (!audioContextRef.current || !sourceNodeRef.current) return;
+
+        // Revoke previous download URL
+        if (exportDownloadUrl) {
+            URL.revokeObjectURL(exportDownloadUrl);
+            setExportDownloadUrl(null);
+        }
+
+        // Pause playback before starting export
+        if (audioRef.current && !audioRef.current.paused) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+        }
+
+        setIsExporting(true);
+        setExportProgress(null);
+
+        try {
+            const blob = await webCodecsExporter.export({
+                canvas: canvasRef.current,
+                audioElement: audioRef.current,
+                audioContext: audioContextRef.current,
+                sourceNode: sourceNodeRef.current,
+                width: config.resolution.width,
+                height: config.resolution.height,
+                fps,
+                videoBitrate: bitrate,
+                onProgress: (progress) => {
+                    setExportProgress(progress);
+                },
+            });
+
+            const url = URL.createObjectURL(blob);
+            setExportDownloadUrl(url);
+        } catch (err) {
+            if ((err as Error).message !== 'Export cancelled.') {
+                console.error('MP4 Export failed:', err);
+            }
+        } finally {
+            setIsExporting(false);
+        }
+    }, [setupAudioContext, exportDownloadUrl, config.resolution]);
+
+    const handleCancelExport = useCallback(() => {
+        webCodecsExporter.cancel();
     }, []);
 
     // Sync state with audio time
@@ -900,6 +962,12 @@ const App: React.FC = () => {
                     mediaName={mediaName}
                     lyricName={lyricName}
                     isRecording={isRecording}
+                    isExporting={isExporting}
+                    exportProgress={exportProgress}
+                    exportDownloadUrl={exportDownloadUrl}
+                    onExportMP4={handleExportMP4}
+                    onCancelExport={handleCancelExport}
+                    hasMedia={!!mediaSrc}
                 />
             </div>
 
