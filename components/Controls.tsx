@@ -1254,6 +1254,18 @@ const Controls: React.FC<ControlsProps> = ({
                         </div>
                     </div>
 
+                    {/* Lyric Vertical Position */}
+                    <div className="bg-neutral-900/40 p-3 rounded-lg border border-neutral-800/50">
+                        <SliderControl
+                            label="Vertical Margin"
+                            value={config.lyricDisplay.verticalOffset || 0}
+                            min={-10}
+                            max={10}
+                            step={0.1}
+                            onChange={(v) => setConfig(prev => ({ ...prev, lyricDisplay: { ...prev.lyricDisplay, verticalOffset: v } }))}
+                        />
+                    </div>
+
                     {/* Fonts & Sizing */}
                     <div className="space-y-3">
                         <div className="space-y-2">

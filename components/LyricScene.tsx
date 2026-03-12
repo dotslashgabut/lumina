@@ -430,6 +430,205 @@ const StaticWordLine: React.FC<{
     );
 };
 
+// Individual word component with smooth lerp-based animation
+const KaraokeWord: React.FC<{
+    word: LyricWord;
+    xPos: number;
+    y: number;
+    currentTime: number;
+    config: ProjectConfig;
+    fontUrl: string;
+    index: number;
+}> = ({ word, xPos, y, currentTime, config, fontUrl, index }) => {
+    const groupRef = useRef<THREE.Group>(null);
+    const textRef = useRef<any>(null);
+    const shadowRef = useRef<any>(null);
+    const materialRef = useRef<THREE.MeshStandardMaterial>(null);
+
+    // Smooth animation state refs
+    const animState = useRef({
+        scale: 1.0,
+        opacity: 0.5,
+        yOffset: 0,
+        emissiveInt: 0,
+        zPos: 0,
+        colorR: 0, colorG: 0, colorB: 0,
+        initialized: false,
+    });
+
+    const primaryColorObj = useMemo(() => new THREE.Color(config.primaryColor), [config.primaryColor]);
+    const secondaryColorObj = useMemo(() => new THREE.Color(config.secondaryColor), [config.secondaryColor]);
+
+    useFrame((_, delta) => {
+        if (!groupRef.current) return;
+        const st = animState.current;
+
+        const isActive = currentTime >= word.startTime && currentTime < word.endTime;
+        const isPast = currentTime >= word.endTime;
+        const isFuture = currentTime < word.startTime;
+
+        // Compute target values
+        let targetScale = 1.0;
+        let targetOpacity = 0.5;
+        let targetEmissive = 0;
+        let targetYOffset = 0;
+        let targetZ = 0;
+        let targetColor = secondaryColorObj;
+
+        if (isActive) {
+            targetScale = 1.2;
+            targetColor = primaryColorObj;
+            targetOpacity = 1;
+            targetEmissive = config.textGlowStrength;
+            targetZ = 0.5;
+
+            const progress = (currentTime - word.startTime) / Math.max(0.01, word.endTime - word.startTime);
+
+            if (config.karaokeMode === 'Bounce') {
+                targetYOffset = Math.sin(progress * Math.PI) * 0.6;
+                targetScale = 1.0 + Math.sin(progress * Math.PI) * 0.3;
+            } else if (config.karaokeMode === 'Word') {
+                const popFade = Math.exp(-progress * 6);
+                targetScale = 1.2 + popFade * 0.4;
+            } else if (config.karaokeMode === 'Typewriter') {
+                targetScale = 1.0;
+            }
+        } else if (isPast) {
+            targetScale = 1.0;
+            targetColor = primaryColorObj;
+            targetOpacity = 1;
+            targetEmissive = config.textGlowStrength * 0.3;
+        }
+
+        // Mode-specific overrides
+        if (config.karaokeMode === 'Typewriter') {
+            if (isFuture) {
+                targetOpacity = 0;
+                targetScale = 0.8;
+            } else if (isActive) {
+                targetOpacity = 1;
+                targetScale = 1.0;
+            }
+        }
+
+        if (config.karaokeMode === 'Reveal') {
+            if (isFuture) {
+                targetOpacity = 0;
+                targetScale = 1.2;
+            } else if (isActive) {
+                const progress = (currentTime - word.startTime) / Math.max(0.01, word.endTime - word.startTime);
+                targetOpacity = progress;
+                targetColor = primaryColorObj;
+                targetScale = 1.0 + (1 - progress) * 0.2;
+            } else {
+                targetOpacity = 1;
+            }
+        }
+
+        // Lerp speed — clamped dt for stability
+        const dt = Math.min(delta, 0.05);
+        // Use faster lerp for snappier, more responsive feel
+        const lerpSpeed = 18;
+        const t = 1 - Math.exp(-lerpSpeed * dt);
+
+        // Initialize on first frame to avoid lerp from zero
+        if (!st.initialized) {
+            st.scale = targetScale;
+            st.opacity = targetOpacity;
+            st.yOffset = targetYOffset;
+            st.emissiveInt = targetEmissive;
+            st.zPos = targetZ;
+            st.colorR = targetColor.r;
+            st.colorG = targetColor.g;
+            st.colorB = targetColor.b;
+            st.initialized = true;
+        } else {
+            st.scale += (targetScale - st.scale) * t;
+            st.opacity += (targetOpacity - st.opacity) * t;
+            st.yOffset += (targetYOffset - st.yOffset) * t;
+            st.emissiveInt += (targetEmissive - st.emissiveInt) * t;
+            st.zPos += (targetZ - st.zPos) * t;
+            st.colorR += (targetColor.r - st.colorR) * t;
+            st.colorG += (targetColor.g - st.colorG) * t;
+            st.colorB += (targetColor.b - st.colorB) * t;
+        }
+
+        // Apply to group transform
+        groupRef.current.position.y = y + st.yOffset;
+        groupRef.current.position.z = st.zPos;
+        groupRef.current.scale.set(st.scale, st.scale, 1);
+
+        // Apply to text material
+        if (textRef.current) {
+            textRef.current.fillOpacity = st.opacity;
+            textRef.current.color = new THREE.Color(st.colorR, st.colorG, st.colorB);
+        }
+        if (materialRef.current) {
+            materialRef.current.color.setRGB(st.colorR, st.colorG, st.colorB);
+            materialRef.current.emissive.setRGB(st.colorR, st.colorG, st.colorB);
+            materialRef.current.emissiveIntensity = st.emissiveInt;
+        }
+        if (shadowRef.current) {
+            shadowRef.current.fillOpacity = config.textShadowOpacity * Math.min(st.opacity / 0.5, 1);
+        }
+    });
+
+    // For Typewriter mode: hide future words completely (render nothing)
+    // But use opacity fade-in rather than unmounting for smoothness
+    const shouldRender = config.karaokeMode !== 'Typewriter' || currentTime >= word.startTime - 0.15;
+
+    if (!shouldRender) return null;
+
+    return (
+        <group ref={groupRef} position={[xPos, y, 0]}>
+            {config.enableTextShadow && (
+                <Text
+                    ref={shadowRef}
+                    position={[config.textShadowOffset, -config.textShadowOffset, -0.05]}
+                    fontSize={config.fontSize}
+                    color={config.textShadowColor}
+                    font={fontUrl}
+                    fontStyle={config.fontStyle}
+                    fontWeight={config.fontWeight}
+                    anchorX="center"
+                    anchorY="middle"
+                    fillOpacity={config.textShadowOpacity}
+                    letterSpacing={config.letterSpacing}
+                >
+                    {word.text}
+                </Text>
+            )}
+            <Text
+                ref={textRef}
+                position={[0, 0, 0]}
+                fontSize={config.fontSize}
+                color={config.secondaryColor}
+                font={fontUrl}
+                fontStyle={config.fontStyle}
+                fontWeight={config.fontWeight}
+                anchorX="center"
+                anchorY="middle"
+                fillOpacity={0.5}
+                outlineWidth={config.strokeWidth}
+                outlineColor={config.strokeColor}
+                letterSpacing={config.letterSpacing}
+            >
+                {word.text}
+                <meshStandardMaterial
+                    ref={materialRef}
+                    attach="material"
+                    color={config.secondaryColor}
+                    emissive={config.secondaryColor}
+                    emissiveIntensity={0}
+                    toneMapped={false}
+                    roughness={1}
+                    metalness={0}
+                />
+            </Text>
+        </group>
+    );
+};
+
 const KaraokeWordLine: React.FC<{
     words: LyricWord[];
     currentTime: number;
@@ -444,106 +643,19 @@ const KaraokeWordLine: React.FC<{
         <group>
             {layout.map((item, i) => {
                 const { word, width, x, y } = item;
-                const isActive = currentTime >= word.startTime && currentTime < word.endTime;
-                const isPast = currentTime >= word.endTime;
                 const xPos = x + (width / 2);
 
-                let scale = 1.0;
-                let color = config.secondaryColor;
-                let opacity = 0.5;
-                let emissiveInt = 0;
-                let yOffset = 0;
-
-                if (isActive) {
-                    scale = 1.2;
-                    color = config.primaryColor;
-                    opacity = 1;
-                    emissiveInt = config.textGlowStrength;
-
-                    const progress = (currentTime - word.startTime) / Math.max(0.01, word.endTime - word.startTime);
-
-                    if (config.karaokeMode === 'Bounce') {
-                        // Springy bounce effect
-                        yOffset = Math.sin(progress * Math.PI) * 0.6;
-                        scale = 1.0 + Math.sin(progress * Math.PI) * 0.3;
-                    } else if (config.karaokeMode === 'Word') {
-                        // Word Pop effect: quick burst then settle
-                        const popFade = Math.exp(-progress * 6); // decay rapidly
-                        scale = 1.2 + popFade * 0.4; // Starts at 1.6, settles to 1.2
-                    } else if (config.karaokeMode === 'Typewriter') {
-                        scale = 1.0; // Typewriter does not change scale
-                    }
-                } else if (isPast) {
-                    scale = 1.0;
-                    color = config.primaryColor;
-                    opacity = 1;
-                    emissiveInt = config.textGlowStrength * 0.3;
-                }
-
-                if (config.karaokeMode === 'Typewriter') {
-                    if (currentTime < word.startTime) return null;
-                    if (isActive) opacity = 1;
-                }
-
-                if (config.karaokeMode === 'Reveal') {
-                    if (currentTime < word.startTime) {
-                        opacity = 0;
-                    } else if (isActive) {
-                        const progress = (currentTime - word.startTime) / Math.max(0.01, word.endTime - word.startTime);
-                        opacity = progress;
-                        color = config.primaryColor;
-                        scale = 1.0 + (1 - progress) * 0.2; // slight scale down while revealing
-                    } else {
-                        opacity = 1;
-                    }
-                }
-
                 return (
-                    <group key={word.id || i}>
-                        {config.enableTextShadow && (
-                            <Text
-                                position={[xPos + config.textShadowOffset, y - config.textShadowOffset, -0.05]}
-                                fontSize={config.fontSize}
-                                color={config.textShadowColor}
-                                font={fontUrl}
-                                fontStyle={config.fontStyle}
-                                fontWeight={config.fontWeight}
-                                anchorX="center"
-                                anchorY="middle"
-                                fillOpacity={config.textShadowOpacity}
-                                scale={[scale, scale, 1]}
-                                letterSpacing={config.letterSpacing}
-                            >
-                                {word.text}
-                            </Text>
-                        )}
-                        <Text
-                            position={[xPos, y + yOffset, isActive ? 0.5 : 0]}
-                            fontSize={config.fontSize}
-                            color={color}
-                            font={fontUrl}
-                            fontStyle={config.fontStyle}
-                            fontWeight={config.fontWeight}
-                            anchorX="center"
-                            anchorY="middle"
-                            fillOpacity={opacity}
-                            scale={[scale, scale, 1]}
-                            outlineWidth={config.strokeWidth}
-                            outlineColor={config.strokeColor}
-                            letterSpacing={config.letterSpacing}
-                        >
-                            {word.text}
-                            <meshStandardMaterial
-                                attach="material"
-                                color={color}
-                                emissive={color}
-                                emissiveIntensity={emissiveInt}
-                                toneMapped={false}
-                                roughness={1}
-                                metalness={0}
-                            />
-                        </Text>
-                    </group>
+                    <KaraokeWord
+                        key={word.id || i}
+                        word={word}
+                        xPos={xPos}
+                        y={y}
+                        currentTime={currentTime}
+                        config={config}
+                        fontUrl={fontUrl}
+                        index={i}
+                    />
                 );
             })}
         </group>
@@ -1139,7 +1251,7 @@ const LyricScene: React.FC<LyricSceneProps> = ({ currentTime, lyrics, config, an
 
             {/* Lyrics Layer */}
             {config.layers.lyrics && (
-                <group ref={groupRef}>
+                <group ref={groupRef} position={[0, config.lyricDisplay.verticalOffset || 0, 0]}>
                     <WavyGroup enabled={config.enableTextWave} frequency={config.textWaveFrequency} speed={config.textWaveSpeed}>
                         <Float speed={config.animationSpeed} rotationIntensity={0.1} floatIntensity={0.2}>
                             {config.lyricDisplay.showPrevious && prevLyric && (

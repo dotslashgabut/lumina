@@ -13,6 +13,7 @@ export type ExportOptions = {
     audioElement: HTMLVideoElement;
     audioContext: AudioContext;
     sourceNode: MediaElementAudioSourceNode;
+    analyserNode: AnalyserNode;
     width: number;
     height: number;
     fps: number;
@@ -27,6 +28,11 @@ export type ExportOptions = {
  *
  * Audio is captured from the AudioContext's MediaStreamDestination and encoded
  * alongside the video stream.
+ *
+ * Visualizer sync: Pre-decodes the audio into an AudioBuffer, then for each frame,
+ * renders a small window of audio through an OfflineAudioContext with an AnalyserNode
+ * to compute accurate FFT data. This data is then injected into a synthetic analyser
+ * wrapper so the visualizer components react correctly during export.
  */
 export class WebCodecsExporter {
     private abortController: AbortController | null = null;
@@ -41,6 +47,66 @@ export class WebCodecsExporter {
             typeof VideoFrame !== 'undefined' &&
             typeof AudioEncoder !== 'undefined'
         );
+    }
+
+    /**
+     * Pre-decode the audio file into an AudioBuffer for offline FFT computation.
+     */
+    private async decodeAudioSource(
+        audioElement: HTMLVideoElement,
+        sampleRate: number,
+    ): Promise<AudioBuffer> {
+        const response = await fetch(audioElement.src);
+        const arrayBuffer = await response.arrayBuffer();
+        const offlineCtx = new OfflineAudioContext(2, 1, sampleRate);
+        return offlineCtx.decodeAudioData(arrayBuffer);
+    }
+
+    /**
+     * Compute FFT frequency data for a given time position in the audio.
+     * Uses an OfflineAudioContext to render a small window of audio through an AnalyserNode.
+     * Returns a Uint8Array matching the format of AnalyserNode.getByteFrequencyData().
+     */
+    private async computeFFTAtTime(
+        audioBuffer: AudioBuffer,
+        timeInSeconds: number,
+        fftSize: number,
+    ): Promise<Uint8Array> {
+        const sampleRate = audioBuffer.sampleRate;
+        // We need at least fftSize samples for the analyser to produce meaningful data.
+        // Render a window of fftSize * 2 samples to ensure the analyser has enough data.
+        const renderSamples = fftSize * 2;
+        const renderDuration = renderSamples / sampleRate;
+
+        // Calculate the start offset, ensuring we don't go before the beginning
+        const startOffset = Math.max(0, timeInSeconds - renderDuration / 2);
+
+        const offlineCtx = new OfflineAudioContext(
+            audioBuffer.numberOfChannels,
+            renderSamples,
+            sampleRate,
+        );
+
+        const source = offlineCtx.createBufferSource();
+        source.buffer = audioBuffer;
+
+        const analyser = offlineCtx.createAnalyser();
+        analyser.fftSize = fftSize;
+        analyser.minDecibels = -90;
+        analyser.maxDecibels = -10;
+        analyser.smoothingTimeConstant = 0; // No smoothing for frame-accurate data
+
+        source.connect(analyser);
+        analyser.connect(offlineCtx.destination);
+
+        source.start(0, startOffset, renderDuration);
+
+        await offlineCtx.startRendering();
+
+        const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(frequencyData);
+
+        return frequencyData;
     }
 
     /**
@@ -63,6 +129,7 @@ export class WebCodecsExporter {
             audioElement,
             audioContext,
             sourceNode,
+            analyserNode,
             width,
             height,
             fps,
@@ -86,6 +153,17 @@ export class WebCodecsExporter {
             totalFrames,
             message: 'Initializing encoder...',
         });
+
+        // Pre-decode audio for offline FFT computation (for visualizer sync)
+        onProgress({
+            phase: 'encoding',
+            percent: 0,
+            currentFrame: 0,
+            totalFrames,
+            message: 'Decoding audio for visualizer sync...',
+        });
+        const decodedAudio = await this.decodeAudioSource(audioElement, audioContext.sampleRate);
+        const fftSize = analyserNode.fftSize;
 
         // Create MP4 Muxer
         const muxer = new Muxer({
@@ -144,6 +222,26 @@ export class WebCodecsExporter {
         const audioDestination = audioContext.createMediaStreamDestination();
         sourceNode.connect(audioDestination);
 
+        // Create a synthetic analyser data buffer that we'll inject FFT data into.
+        // We'll use an AudioBufferSourceNode connected to the real analyser to feed it
+        // pre-computed audio for each frame.
+        const syntheticFrequencyData = new Uint8Array(analyserNode.frequencyBinCount);
+
+        // Monkey-patch the analyser's getByteFrequencyData to return our synthetic data during export.
+        // This is the most reliable way to make all visualizer components react correctly
+        // without modifying any of them.
+        const originalGetByteFrequencyData = analyserNode.getByteFrequencyData.bind(analyserNode);
+        const originalGetByteTimeDomainData = analyserNode.getByteTimeDomainData.bind(analyserNode);
+        analyserNode.getByteFrequencyData = (array: Uint8Array) => {
+            array.set(syntheticFrequencyData.subarray(0, array.length));
+        };
+
+        // For time-domain data (used by Waveform visualizer), compute from the decoded audio
+        let syntheticTimeDomainData: Uint8Array<ArrayBufferLike> = new Uint8Array(analyserNode.fftSize).fill(128);
+        analyserNode.getByteTimeDomainData = (array: Uint8Array) => {
+            array.set(syntheticTimeDomainData.subarray(0, array.length));
+        };
+
         try {
             // Seek to start
             audioElement.currentTime = 0;
@@ -167,7 +265,14 @@ export class WebCodecsExporter {
                 const timeInSeconds = frameIndex / fps;
                 const timestampUs = frameIndex * frameDurationUs;
 
-                // Seek audio to current frame time
+                // Compute FFT data for this frame's time position
+                const fftData = await this.computeFFTAtTime(decodedAudio, timeInSeconds, fftSize);
+                syntheticFrequencyData.set(fftData);
+
+                // Compute time-domain data for this frame
+                syntheticTimeDomainData = this.computeTimeDomainAtTime(decodedAudio, timeInSeconds, fftSize);
+
+                // Seek audio to current frame time (for lyric sync via currentTime)
                 audioElement.currentTime = timeInSeconds;
 
                 // Wait for the seek to process
@@ -257,6 +362,10 @@ export class WebCodecsExporter {
             });
             throw error;
         } finally {
+            // Restore the original AnalyserNode methods
+            analyserNode.getByteFrequencyData = originalGetByteFrequencyData;
+            analyserNode.getByteTimeDomainData = originalGetByteTimeDomainData;
+
             // Cleanup
             this.isExporting = false;
             this.abortController = null;
@@ -272,6 +381,34 @@ export class WebCodecsExporter {
                 audioEncoder.close();
             }
         }
+    }
+
+    /**
+     * Compute time-domain data (waveform) at a given time position.
+     * Returns a Uint8Array in the same format as AnalyserNode.getByteTimeDomainData().
+     */
+    private computeTimeDomainAtTime(
+        audioBuffer: AudioBuffer,
+        timeInSeconds: number,
+        fftSize: number,
+    ): Uint8Array {
+        const sampleRate = audioBuffer.sampleRate;
+        const startSample = Math.floor(timeInSeconds * sampleRate);
+        const channelData = audioBuffer.getChannelData(0); // Use first channel
+        const result = new Uint8Array(fftSize);
+
+        for (let i = 0; i < fftSize; i++) {
+            const sampleIndex = startSample + i;
+            if (sampleIndex >= 0 && sampleIndex < channelData.length) {
+                // Convert from -1..1 float to 0..255 byte (128 = silence)
+                result[i] = Math.round((channelData[sampleIndex] + 1) * 128);
+                result[i] = Math.max(0, Math.min(255, result[i]));
+            } else {
+                result[i] = 128; // Silence
+            }
+        }
+
+        return result;
     }
 
     /**

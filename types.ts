@@ -46,6 +46,7 @@ export interface LyricDisplayConfig {
     showPrevious: boolean;
     showCurrent: boolean;
     showNext: boolean;
+    verticalOffset: number;
 }
 
 // === VISUALIZER SETTINGS ===
@@ -296,7 +297,8 @@ export const DEFAULT_CONFIG: ProjectConfig = {
     lyricDisplay: {
         showPrevious: true,
         showCurrent: true,
-        showNext: true
+        showNext: true,
+        verticalOffset: 0
     },
     postProcessing: DEFAULT_POST_PROCESSING,
     visualizerSettings: DEFAULT_VISUALIZER_SETTINGS,
@@ -320,7 +322,13 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             particles: true,
             stars: false,
         },
-        lyricDisplay: DEFAULT_CONFIG.lyricDisplay,
+        lyricDisplay: {
+            ...DEFAULT_CONFIG.lyricDisplay,
+            showPrevious: true,
+            showCurrent: true,
+            showNext: true,
+            verticalOffset: 0
+        },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -347,7 +355,7 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             stars: false,
             particles: true
         },
-        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false },
+        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false, verticalOffset: 0 },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -377,7 +385,13 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             particles: true,
             stars: false
         },
-        lyricDisplay: DEFAULT_CONFIG.lyricDisplay,
+        lyricDisplay: {
+            ...DEFAULT_CONFIG.lyricDisplay,
+            showPrevious: true,
+            showCurrent: true,
+            showNext: true,
+            verticalOffset: 0
+        },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -402,7 +416,13 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             stars: false,
             lineWave: true,
         },
-        lyricDisplay: DEFAULT_CONFIG.lyricDisplay,
+        lyricDisplay: {
+            ...DEFAULT_CONFIG.lyricDisplay,
+            showPrevious: true,
+            showCurrent: true,
+            showNext: true,
+            verticalOffset: 0
+        },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableGlitch: true,
@@ -434,7 +454,13 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             stars: true,
             lineWave: false,
         },
-        lyricDisplay: DEFAULT_CONFIG.lyricDisplay,
+        lyricDisplay: {
+            ...DEFAULT_CONFIG.lyricDisplay,
+            showPrevious: true,
+            showCurrent: true,
+            showNext: true,
+            verticalOffset: 0
+        },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -462,7 +488,13 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             particles: true,
             circularWave: true,
         },
-        lyricDisplay: DEFAULT_CONFIG.lyricDisplay,
+        lyricDisplay: {
+            ...DEFAULT_CONFIG.lyricDisplay,
+            showPrevious: true,
+            showCurrent: true,
+            showNext: true,
+            verticalOffset: 0
+        },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -489,7 +521,13 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             stars: false,
             liquidWave: true,
         },
-        lyricDisplay: DEFAULT_CONFIG.lyricDisplay,
+        lyricDisplay: {
+            ...DEFAULT_CONFIG.lyricDisplay,
+            showPrevious: true,
+            showCurrent: true,
+            showNext: true,
+            verticalOffset: 0
+        },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -522,7 +560,7 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             particles: true,
             stars: false,
         },
-        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false },
+        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false, verticalOffset: 0 },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -553,7 +591,7 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             stars: false,
             waveform: true,
         },
-        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false },
+        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false, verticalOffset: 0 },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -581,7 +619,7 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             particles: true,
             stars: false,
         },
-        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false },
+        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false, verticalOffset: 0 },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -609,7 +647,13 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             stars: true,
             liquidWave: true,
         },
-        lyricDisplay: DEFAULT_CONFIG.lyricDisplay,
+        lyricDisplay: {
+            ...DEFAULT_CONFIG.lyricDisplay,
+            showPrevious: true,
+            showCurrent: true,
+            showNext: true,
+            verticalOffset: 0
+        },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,
@@ -639,7 +683,7 @@ export const PRESETS: Record<string, Partial<ProjectConfig>> = {
             particles: false,
             stars: false,
         },
-        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false },
+        lyricDisplay: { showPrevious: false, showCurrent: true, showNext: false, verticalOffset: 0 },
         postProcessing: {
             ...DEFAULT_POST_PROCESSING,
             enableBloom: true,

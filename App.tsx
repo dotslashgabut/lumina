@@ -362,7 +362,7 @@ const App: React.FC = () => {
         if (audioContextRef.current?.state === 'suspended') {
             await audioContextRef.current.resume();
         }
-        if (!audioContextRef.current || !sourceNodeRef.current) return;
+        if (!audioContextRef.current || !sourceNodeRef.current || !analyserRef.current) return;
 
         // Revoke previous download URL
         if (exportDownloadUrl) {
@@ -385,6 +385,7 @@ const App: React.FC = () => {
                 audioElement: audioRef.current,
                 audioContext: audioContextRef.current,
                 sourceNode: sourceNodeRef.current,
+                analyserNode: analyserRef.current!,
                 width: config.resolution.width,
                 height: config.resolution.height,
                 fps,
