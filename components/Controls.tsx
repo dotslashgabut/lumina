@@ -204,6 +204,39 @@ const Controls: React.FC<ControlsProps> = ({
     const [exportBitrate, setExportBitrate] = React.useState(8_000_000);
     const [localFont, setLocalFont] = React.useState(config.fontFamily === 'Custom' ? '' : config.fontFamily);
     const bgImageInputRef = useRef<HTMLInputElement>(null);
+    const settingsInputRef = useRef<HTMLInputElement>(null);
+
+    const handleExportSettings = useCallback(() => {
+        const dataStr = JSON.stringify(config, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', url);
+        linkElement.setAttribute('download', 'lumina-settings.json');
+        linkElement.click();
+        URL.revokeObjectURL(url);
+    }, [config]);
+
+    const handleImportSettings = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const content = ev.target?.result as string;
+                    const parsedConfig = JSON.parse(content) as Partial<ProjectConfig>;
+                    setConfig(prev => ({ ...prev, ...parsedConfig }));
+                } catch (err) {
+                    console.error("Failed to parse settings JSON:", err);
+                    alert("Invalid settings file. Please check the format.");
+                }
+            };
+            reader.readAsText(file);
+        }
+        if (settingsInputRef.current) {
+            settingsInputRef.current.value = '';
+        }
+    }, [setConfig]);
 
     // Sync local state when config changes (e.g. presets)
     React.useEffect(() => {
@@ -408,6 +441,35 @@ const Controls: React.FC<ControlsProps> = ({
                                 {name}
                             </button>
                         ))}
+                    </div>
+                </Section>
+
+                <div className="h-px bg-linear-to-r from-transparent via-neutral-800 to-transparent" />
+
+                {/* Settings Data */}
+                <Section title="Settings Data" icon={FileText} defaultOpen={false}>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleExportSettings}
+                            className="flex-1 flex items-center justify-center gap-2 bg-neutral-900/60 border border-neutral-800/60 hover:bg-neutral-800/80 hover:border-green-500/40 text-neutral-300 hover:text-white py-2 px-3 rounded-lg transition-all duration-200 text-[11px] font-medium"
+                        >
+                            <Download size={13} />
+                            Export JSON
+                        </button>
+                        <button
+                            onClick={() => settingsInputRef.current?.click()}
+                            className="flex-1 flex items-center justify-center gap-2 bg-neutral-900/60 border border-neutral-800/60 hover:bg-neutral-800/80 hover:border-green-500/40 text-neutral-300 hover:text-white py-2 px-3 rounded-lg transition-all duration-200 text-[11px] font-medium"
+                        >
+                            <Upload size={13} />
+                            Import JSON
+                        </button>
+                        <input
+                            type="file"
+                            ref={settingsInputRef}
+                            onChange={handleImportSettings}
+                            className="hidden"
+                            accept=".json"
+                        />
                     </div>
                 </Section>
 
