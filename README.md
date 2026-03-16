@@ -23,6 +23,7 @@ Create stunning kinetic typography lyric videos directly in your browser — pow
 - **Word-level Karaoke** — 6 animation modes with smooth interpolated transitions
 - **Multi-format Lyrics** — Import `.srt`, `.lrc` (enhanced word-level), `.vtt`, `.ttml`, `.xml`
 - **Playlist Support** — Queue multiple tracks with per-track lyrics
+- **JSON Configuration** — Export and import your visual, audio, and camera settings via JSON files
 - **WebM Recording** — Record directly from the canvas with audio sync
 - **MP4 Export (WebCodecs)** — Hardware-accelerated H.264 + AAC encoding to MP4
 
@@ -51,6 +52,7 @@ Bloom, Glitch, Film Grain, Chromatic Aberration, Vignette, Scanlines, Pixelation
 ### 📦 Export Options
 - **WebM Recording** — Real-time canvas + audio capture via MediaRecorder
 - **MP4 Export** — Frame-by-frame WebCodecs encoding with configurable FPS (24/30/60) and quality (4–16 Mbps)
+- **JSON Configuration** — Save and restore complete project settings locally
 
 ---
 
@@ -93,7 +95,7 @@ npm run preview
 2. **Upload lyrics** — Import `.srt`, `.lrc`, `.vtt`, or `.ttml` files
 3. **Choose a preset** — Select from 12 curated visual presets
 4. **Customize** — Adjust fonts, colors, visualizers, camera, and effects
-5. **Export** — Record as WebM or export as MP4
+5. **Export** — Record as WebM, export as MP4, or save settings as JSON
 
 ### Keyboard Shortcuts
 | Key | Action |
