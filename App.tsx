@@ -473,6 +473,7 @@ const App: React.FC = () => {
             const link = document.createElement('link');
             link.href = `https://fonts.googleapis.com/css2?family=${fontName}&display=swap`;
             link.rel = 'stylesheet';
+            link.crossOrigin = 'anonymous';
 
             link.onerror = () => {
                 console.warn(`Could not load font "${config.fontFamily}" - falling back to system fonts`);

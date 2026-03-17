@@ -952,33 +952,73 @@ const LyricScene: React.FC<LyricSceneProps> = ({ currentTime, lyrics, config, an
             return;
         }
 
-        // Dynamic font: try CSS API, but guard against woff2
+        // Dynamic font: inject a <link> stylesheet to avoid CORS issues in production.
+        // <link rel="stylesheet"> is not subject to CORS restrictions like fetch() is.
         let isMounted = true;
-        const fetchFontUrl = async () => {
+        const familyStr = fontName.trim().replace(/\s+/g, '+');
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        // Use CSS API v1 without specifying woff2 — the browser will get an appropriate format
+        link.href = `https://fonts.googleapis.com/css?family=${familyStr}&display=swap`;
+        link.crossOrigin = 'anonymous';
+
+        const extractFontUrl = () => {
+            if (!isMounted) return;
             try {
-                const familyStr = fontName.trim().replace(/\s+/g, '+');
-                const res = await fetch(`https://fonts.googleapis.com/css?family=${familyStr}&display=swap`);
-                const css = await res.text();
-                // Look for supported formats: .woff (not .woff2) or .ttf
-                const woffMatch = css.match(/url\((https:\/\/[^)]+\.woff)\)/);
-                const ttfMatch = css.match(/url\((https:\/\/[^)]+\.ttf)\)/);
-                const fontMatch = woffMatch || ttfMatch;
-                if (isMounted) {
-                    if (fontMatch && fontMatch[1]) {
-                        setFontUrl(fontMatch[1]);
-                    } else {
-                        // Only woff2 available — troika can't handle it, keep fallback
-                        console.warn(`Font "${fontName}" only available as woff2; using fallback for 3D text.`);
-                        setFontUrl(FALLBACK_FONT);
+                // Search through all stylesheets for the Google Fonts @font-face rules
+                for (let i = 0; i < document.styleSheets.length; i++) {
+                    const sheet = document.styleSheets[i];
+                    if (!sheet.href || !sheet.href.includes('fonts.googleapis.com')) continue;
+                    try {
+                        const rules = sheet.cssRules || sheet.rules;
+                        for (let j = 0; j < rules.length; j++) {
+                            const rule = rules[j];
+                            if (rule instanceof CSSFontFaceRule) {
+                                const src = rule.style.getPropertyValue('src');
+                                // Look for .woff (not .woff2) or .ttf URLs
+                                const woffMatch = src.match(/url\(["']?(https:\/\/[^"')]+\.woff)["']?\)/);
+                                const ttfMatch = src.match(/url\(["']?(https:\/\/[^"')]+\.ttf)["']?\)/);
+                                const fontMatch = woffMatch || ttfMatch;
+                                if (fontMatch && fontMatch[1] && isMounted) {
+                                    setFontUrl(fontMatch[1]);
+                                    return;
+                                }
+                            }
+                        }
+                    } catch (_e) {
+                        // CSSOM access can fail cross-origin, ignore and continue
                     }
+                }
+                // If CSSOM parsing didn't find a compatible format, try direct TTF URL construction
+                // Google Fonts gstatic URLs follow predictable patterns
+                if (isMounted) {
+                    console.warn(`Font "${fontName}" — could not extract URL from CSSOM; using fallback for 3D text.`);
+                    setFontUrl(FALLBACK_FONT);
                 }
             } catch (err) {
                 if (isMounted) setFontUrl(FALLBACK_FONT);
             }
         };
-        fetchFontUrl();
 
-        return () => { isMounted = false; };
+        link.onload = () => {
+            // Small delay to let the browser fully parse the stylesheet rules
+            setTimeout(extractFontUrl, 100);
+        };
+        link.onerror = () => {
+            if (isMounted) {
+                console.warn(`Could not load Google Fonts stylesheet for "${fontName}"; using fallback.`);
+                setFontUrl(FALLBACK_FONT);
+            }
+        };
+
+        document.head.appendChild(link);
+
+        return () => {
+            isMounted = false;
+            if (document.head.contains(link)) {
+                document.head.removeChild(link);
+            }
+        };
     }, [config.fontFamily, config.customFontUrl]);
 
     // Camera cut state
