@@ -5,6 +5,7 @@ import { Text, Sparkles, Float, Stars, OrbitControls } from '@react-three/drei';
 import { EffectComposer, Glitch, Noise, Vignette, ChromaticAberration, Bloom, Scanline, Pixelation, HueSaturation, Sepia, DotScreen, Grid } from '@react-three/postprocessing';
 import { GlitchMode } from 'postprocessing';
 import * as THREE from 'three';
+import fallbackFontFile from '../src/assets/fallback.woff';
 import { LyricLine, LyricWord, ProjectConfig } from '../types';
 import { BasicVisualizer, ComplexVisualizer, LinearSpectrum, LiquidWave, RetroGrid, LineWave, Waveform, DNAHelix, CircularWave, GalaxySpiral } from './Visualizers';
 
@@ -906,7 +907,7 @@ const LyricScene: React.FC<LyricSceneProps> = ({ currentTime, lyrics, config, an
     const mousePos = useRef({ x: 0, y: 0 });
     const isChangingZoomRef = useRef(false);
 
-    const FALLBACK_FONT = 'https://fonts.gstatic.com/s/roboto/v18/KFOmCnqEu92Fr1Mu4mxM.woff';
+    const FALLBACK_FONT = fallbackFontFile;
 
     // Direct TTF URLs for known fonts (troika-three-text doesn't support woff2,
     // and browser fetch() always gets woff2 from Google Fonts CSS API)
@@ -952,72 +953,39 @@ const LyricScene: React.FC<LyricSceneProps> = ({ currentTime, lyrics, config, an
             return;
         }
 
-        // Dynamic font: inject a <link> stylesheet to avoid CORS issues in production.
-        // <link rel="stylesheet"> is not subject to CORS restrictions like fetch() is.
+        // Dynamic font: troika-three-text does not support the .woff2 format
+        // that Google Fonts serves to modern browsers. We use the Google Webfonts Helper API
+        // to directly get a clean .ttf URL for the requested font family.
         let isMounted = true;
-        const familyStr = fontName.trim().replace(/\s+/g, '+');
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        // Use CSS API v1 without specifying woff2 — the browser will get an appropriate format
-        link.href = `https://fonts.googleapis.com/css?family=${familyStr}&display=swap`;
-        link.crossOrigin = 'anonymous';
-
-        const extractFontUrl = () => {
-            if (!isMounted) return;
-            try {
-                // Search through all stylesheets for the Google Fonts @font-face rules
-                for (let i = 0; i < document.styleSheets.length; i++) {
-                    const sheet = document.styleSheets[i];
-                    if (!sheet.href || !sheet.href.includes('fonts.googleapis.com')) continue;
-                    try {
-                        const rules = sheet.cssRules || sheet.rules;
-                        for (let j = 0; j < rules.length; j++) {
-                            const rule = rules[j];
-                            if (rule instanceof CSSFontFaceRule) {
-                                const src = rule.style.getPropertyValue('src');
-                                // Look for .woff (not .woff2) or .ttf URLs
-                                const woffMatch = src.match(/url\(["']?(https:\/\/[^"')]+\.woff)["']?\)/);
-                                const ttfMatch = src.match(/url\(["']?(https:\/\/[^"')]+\.ttf)["']?\)/);
-                                const fontMatch = woffMatch || ttfMatch;
-                                if (fontMatch && fontMatch[1] && isMounted) {
-                                    setFontUrl(fontMatch[1]);
-                                    return;
-                                }
-                            }
-                        }
-                    } catch (_e) {
-                        // CSSOM access can fail cross-origin, ignore and continue
-                    }
+        
+        const fetchGoogleFont = async () => {
+             const fontId = fontName.trim().toLowerCase().replace(/\s+/g, '-');
+             try {
+                // Fetch font metadata from the open Google Webfonts Helper API
+                const res = await fetch(`https://gwfh.mranftl.com/api/fonts/${fontId}`);
+                if (!res.ok) throw new Error('Font not found in Webfonts Helper API');
+                const data = await res.json();
+                
+                // Use the regular variant, or fallback to the first available variant
+                const variant = data.variants.find((v: any) => v.id === 'regular') || data.variants[0];
+                
+                if (variant && variant.ttf && isMounted) {
+                    setFontUrl(variant.ttf);
+                } else if (isMounted) {
+                    throw new Error('No TTF format found for this font');
                 }
-                // If CSSOM parsing didn't find a compatible format, try direct TTF URL construction
-                // Google Fonts gstatic URLs follow predictable patterns
-                if (isMounted) {
-                    console.warn(`Font "${fontName}" — could not extract URL from CSSOM; using fallback for 3D text.`);
-                    setFontUrl(FALLBACK_FONT);
-                }
-            } catch (err) {
-                if (isMounted) setFontUrl(FALLBACK_FONT);
-            }
+             } catch (err) {
+                 if (isMounted) {
+                     console.warn(`Could not load Google Font "${fontName}" for 3D text; using fallback.`);
+                     setFontUrl(FALLBACK_FONT);
+                 }
+             }
         };
-
-        link.onload = () => {
-            // Small delay to let the browser fully parse the stylesheet rules
-            setTimeout(extractFontUrl, 100);
-        };
-        link.onerror = () => {
-            if (isMounted) {
-                console.warn(`Could not load Google Fonts stylesheet for "${fontName}"; using fallback.`);
-                setFontUrl(FALLBACK_FONT);
-            }
-        };
-
-        document.head.appendChild(link);
+        
+        fetchGoogleFont();
 
         return () => {
             isMounted = false;
-            if (document.head.contains(link)) {
-                document.head.removeChild(link);
-            }
         };
     }, [config.fontFamily, config.customFontUrl]);
 

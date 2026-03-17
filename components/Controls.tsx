@@ -312,9 +312,18 @@ const Controls: React.FC<ControlsProps> = ({
     const handleFontUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const url = URL.createObjectURL(file);
-            setConfig(prev => ({ ...prev, customFontUrl: url, fontFamily: 'Custom' }));
-            setLocalFont('');
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const dataUrl = ev.target?.result as string;
+                if (dataUrl) {
+                    setConfig(prev => ({ ...prev, customFontUrl: dataUrl, fontFamily: 'Custom' }));
+                    setLocalFont('');
+                }
+            };
+            reader.onerror = () => {
+                console.error("Failed to read font file");
+            };
+            reader.readAsDataURL(file);
         }
     }
 

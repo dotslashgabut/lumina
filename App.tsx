@@ -490,13 +490,27 @@ const App: React.FC = () => {
             }
         } else if (config.customFontUrl) {
             // Register custom font for Canvas/CSS access
-            const font = new FontFace('LuminaCustom', `url(${config.customFontUrl})`);
+            // Data URLs contain special chars (commas, semicolons) — must be quoted inside url()
+            const font = new FontFace('LuminaCustom', `url("${config.customFontUrl}")`);
             font.load().then(f => {
+                // Remove previous LuminaCustom entries to avoid stale fonts
+                document.fonts.forEach(existingFont => {
+                    if (existingFont.family === 'LuminaCustom') {
+                        document.fonts.delete(existingFont);
+                    }
+                });
                 document.fonts.add(f);
                 console.log("Custom font registered successfully");
             }).catch(err => {
                 console.error("Failed to load custom font for measurement:", err);
             });
+            return () => {
+                document.fonts.forEach(existingFont => {
+                    if (existingFont.family === 'LuminaCustom') {
+                        document.fonts.delete(existingFont);
+                    }
+                });
+            };
         }
     }, [config.fontFamily, config.customFontUrl]);
 
